@@ -37,87 +37,7 @@ The resulting Lakehouse is consumed by:
 
 # 🏗️ Architecture
 
-```text
-                         ┌───────────────────┐
-                         │     GitHub        │
-                         │  Source Control   │
-                         └───────────────────┘
-
-
-┌─────────────────┐
-│   TomTom API    │
-│                 │
-│ Real-Time       │
-│ Traffic Data    │
-└────────┬────────┘
-         │
-         │ REST API / JSON
-         ▼
-┌─────────────────┐
-│ Python Producer │
-│                 │
-│ requests        │
-│ python-dotenv   │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│             AWS EC2             │
-│                                 │
-│            Docker               │
-│                                 │
-│   ┌─────────────┐               │
-│   │   Kafka     │               │
-│   │             │               │
-│   │ traffic-data│               │
-│   └──────┬──────┘               │
-│          │                      │
-└──────────┼──────────────────────┘
-           │
-           ▼
-┌───────────────────────────────┐
-│        Apache Spark           │
-│                               │
-│ Structured Streaming          │
-│ Kafka Consumer                │
-│ JSON Parsing                  │
-│ Data Processing               │
-└───────────────┬───────────────┘
-                │
-                ▼
-┌─────────────────────────────────────────┐
-│              Databricks                │
-│                                         │
-│              Delta Lake                 │
-│                                         │
-│  ┌──────────┐                           │
-│  │  Bronze  │ Raw / Ingested            │
-│  └────┬─────┘                           │
-│       │                                  │
-│       ▼                                  │
-│  ┌──────────┐                           │
-│  │  Silver  │ Cleaned / Validated       │
-│  └────┬─────┘                           │
-│       │                                  │
-│       ▼                                  │
-│  ┌──────────┐                           │
-│  │   Gold   │ Analytics / Aggregations  │
-│  └──────────┘                           │
-│                                         │
-└───────────────┬─────────────────────────┘
-                │
-        ┌───────┴──────────┐
-        ▼                  ▼
-┌─────────────────┐   ┌───────────────┐
-│   Databricks    │   │   Power BI    │
-│    Dashboard    │   │               │
-│                 │   │ Historical    │
-│ Near Real-Time  │   │ Analytics     │
-│ Monitoring      │   │ KPIs          │
-└─────────────────┘   └───────────────┘
-```
-
----
+![Pipeline Architecture](docs/realtime-traffic-pipeline.png)
 
 # 🎯 Project Objectives
 
@@ -315,30 +235,13 @@ Medallion Architecture
 
 Conceptually:
 
-```text
-                    LAKEHOUSE
-                       │
-             ┌─────────┴─────────┐
-             │                   │
-          Storage             Compute
-             │                   │
-         Delta Lake          Databricks
-             │               Apache Spark
-             │
-      ┌──────┴──────┐
-      │             │
-   Bronze         Silver
-                    │
-                    ▼
-                  Gold
-                    │
-              ┌─────┴─────┐
-              ▼           ▼
-        Databricks      Power BI
-         Dashboard
-```
-
 The Lakehouse allows the same platform to support both streaming ingestion and analytical workloads.
+
+---
+
+## 🧱 Databricks
+
+![Databricks](docs/realtime-traffic-databricks.png)
 
 ---
 
@@ -482,6 +385,15 @@ This separation allows the project to maintain a more frequent operational pipel
 
 ---
 
+
+---
+
+# 💼 Jobs / Workflows
+
+This project uses scheduled processing jobs/workflows to separate near real-time operational processing from historical analytical processing.
+
+![Jobs](docs/realtime-traffic-analytics-jobs.png)
+
 # 📂 Project Structure
 
 ```text
@@ -496,6 +408,15 @@ realtime-traffic-pipeline/
 │
 ├── kafka/
 │   └── docker-compose.yml
+│
+├── docs/
+│   ├── pipeline-architecture.png
+│   ├── jobs.png
+│   ├── databricks.png
+│   ├── ec2.png
+│   ├── data-modeling.png
+│   ├── dashboard-realtime.png
+│   └── dashboard-analytics-pbi.png
 │
 ├── .env
 ├── .gitignore
@@ -621,6 +542,12 @@ The Kafka broker should be running and exposing:
 ```text
 9092
 ```
+
+> ⚠️ **IMPORTANT — Port 9092 is open for the pilot/demo environment only.**
+>
+> The current setup exposes Kafka on port `9092` to make the pilot easier to run and validate. **Do not deploy this configuration to production as-is.**
+>
+> For production, restrict Kafka network access using AWS Security Groups/firewall rules, private networking where applicable, authentication and encryption (for example TLS/SASL), and only allow trusted clients to reach the broker.
 
 Inside the Docker network, Kafka is available through:
 
@@ -757,6 +684,10 @@ The EC2 instance provides the cloud compute environment required to keep the str
 
 ---
 
+![AWS EC2](docs/realtime-traffic-ec2.png)
+
+---
+
 # 🔄 Data Flow
 
 The complete data flow is:
@@ -887,9 +818,19 @@ The objective is to prevent low-quality records from propagating into the Gold l
 
 ---
 
+# 🗂️ Data Modeling
+
+The project uses structured Bronze, Silver and Gold layers to organize the traffic data from ingestion through analytical consumption.
+
+![Data Modeling Diagram](docs/realtime-traffic-diagram.png)
+
+---
+
 # 📊 Dashboards
 
 ## Databricks Dashboard
+
+![Real-Time Dashboard](docs/realtime-traffic-monitoring-dashboard.png)
 
 Used for near real-time operational monitoring.
 
@@ -907,6 +848,8 @@ The dashboard consumes processed Silver data.
 ---
 
 ## Power BI
+
+![Power BI Analytics Dashboard](docs/realtime-traffic-analytics.png)
 
 Power BI is used for historical and analytical reporting.
 
@@ -940,13 +883,13 @@ Private keys
 
 The Kafka infrastructure should also be protected using appropriate AWS Security Group rules.
 
-For production environments, Kafka should not be unnecessarily exposed to:
+### ⚠️ Kafka Port 9092 — Pilot Only
 
-```text
-0.0.0.0/0
-```
+The repository's current Kafka configuration may expose port `9092` for the **pilot/demo environment**.
 
-Network access should be restricted to trusted sources.
+**This is not a production-ready network configuration and should not be promoted to production without hardening.** Do not leave Kafka exposed to the public internet or `0.0.0.0/0` in a production environment.
+
+For production, network access should be restricted to trusted sources and the Kafka deployment should use appropriate authentication, encryption, firewall/Security Group rules, and private networking where applicable.
 
 ---
 
